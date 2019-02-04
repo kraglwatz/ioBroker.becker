@@ -1,0 +1,45 @@
+{
+  "name": "ioBroker.becker",
+  "version": "0.6.0",
+  "description": "becker",
+  "author": {
+    "name": "Markus Hofmann",
+    "email": "markus@dr-hofmann.org"
+  },
+  "contributors": [
+    {
+      "name": "Markus Hofmann",
+      "email": "markus@dr-hofmann.org"
+    }
+  ],
+  "homepage": "https://github.com/kraglwatz/ioBroker.becker",
+  "license": "MIT",
+  "keywords": [
+    "ioBroker",
+    "becker",
+    "Smart Home",
+    "home automation"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kraglwatz/ioBroker.becker"
+  },
+  "dependencies": {
+    "cron": "^1.6.0",
+    "request": "^2.83.0",
+    "ws": "^6.0.0"
+  },
+  "devDependencies": {
+    "gulp": "^3.9.1",
+    "mocha": "^4.1.0",
+    "chai": "^4.1.2"
+  },
+  "main": "main.js",
+  "scripts": {
+    "test": "node node_modules/mocha/bin/mocha --exit"
+  },
+  "bugs": {
+    "url": "https://github.com/kraglwatz/ioBroker.becker/issues"
+  },
+  "readmeFilename": "README.md"
+}

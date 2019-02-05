@@ -374,7 +374,7 @@ gulp.task('updatePackages', function (done) {
 gulp.task('rename', function ()  {
     var newname;
     var author = 'Markus Hofmann';
-    var email  = 'markus@dr-hofmann.org';
+    var email  = 'iobroker@dr-hofmann.org';
     for (var a = 0; a < process.argv.length; a++) {
         if (process.argv[a] === '--name') {
             newname = process.argv[a + 1]
@@ -429,7 +429,7 @@ gulp.task('rename', function ()  {
             replacement: author
         },
         {
-            match: /markus@dr-hofmann.org/g,
+            match: /iobroker@dr-hofmann.org/g,
             replacement: email
         }
     ];

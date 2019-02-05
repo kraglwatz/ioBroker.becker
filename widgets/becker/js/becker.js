@@ -3,7 +3,7 @@
 
     version: "0.5.0"
 
-    Copyright 10.2015-2016 Markus Hofmann<markus@dr-hofmann.org>
+    Copyright 10.2015-2016 Markus Hofmann<iobroker@dr-hofmann.org>
 
 */
 "use strict";

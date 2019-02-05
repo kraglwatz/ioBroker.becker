@@ -5,64 +5,32 @@
         "news": {
             "0.6.0": {
                 "en": "Support of admin3",
-                "de": "Unterstützung von admin3",
-                "ru": "Поддержка admin3",
-                "pt": "Suporte de admin3",
-                "nl": "Ondersteuning van admin3",
-                "fr": "Support de admin3",
-                "it": "Supporto di admin3",
-                "es": "Soporte de admin3"
+                "de": "Unterstützung von admin3"
             },
             "0.5.0": {
                 "en": "beta version",
-                "de": "Betaversion",
-                "ru": "Бета версия",
-                "pt": "Versão beta",
-                "fr": "Version bêta",
-                "nl": "Beta versie"
+                "de": "Betaversion"
             },
             "0.0.1": {
                 "en": "initial adapter",
-                "de": "Initiale Version",
-                "ru": "Первоначальный адаптер",
-                "pt": "Versão inicial",
-                "fr": "Version initiale",
-                "nl": "Eerste release"
+                "de": "Initiale Version"
             }
         },
 		"title": "Becker Home Automation",
         "titleLang": {
             "en": "Becker Home Automation",
-            "de": "Becker Home Automation",
-            "ru": "Адаптер шаблонов на основе Javascript / Node.js",
-            "pt": "Adaptador de modelo baseado em Javascript / Node.js",
-            "nl": "Javascript / Node.js gebaseerde sjabloonadapter",
-            "fr": "Javascript / Node.js basé adaptateur de modèle",
-            "it": "Adattatore modello basato su Javascript / Node.js",
-            "es": "Adaptador de plantilla basado en JavaScript / Node.js"
+            "de": "Becker Home Automation"
         },
         "desc": {
             "en": "ioBroker becker",
-            "de": "ioBroker Becker",
-            "ru": "ioBroker Becker как образец",
-            "pt": "Modelo de adaptador para o ioBroker",
-            "fr": "ioBroker adaptateur modèle",
-            "nl": "ioBroker Becker",
-            "it": "Adattatore modello ioBroker",
-            "es": "Adaptador de plantilla ioBroker"
+            "de": "ioBroker Becker"
         },
         "authors": [
-            "Markus Hofmann <markus@dr-hofmann.org>"
+            "Markus Hofmann <iobroker@dr-hofmann.org>"
         ],
         "docs": {
             "en": "docs/en/admin.md",
-            "ru": "docs/ru/admin.md",
-            "de": "docs/de/admin.md",
-            "es": "docs/es/admin.md",
-            "it": "docs/it/admin.md",
-            "fr": "docs/fr/admin.md",
-            "nl": "docs/nl/admin.md",
-            "pt": "docs/pt/admin.md"
+            "de": "docs/de/admin.md"
         },
         "platform": "Javascript/Node.js",
         "mode": "daemon",

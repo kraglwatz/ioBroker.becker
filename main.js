@@ -35,8 +35,8 @@
 
 var http		= require('http');
 var request		= require('request');
-var fs = require('fs');
-var cron = require('cron');
+var cron        = require('cron');
+let fs = require("fs");
 
 
 //you have to require the utils module and call adapter function
@@ -81,13 +81,13 @@ adapter.on('unload', function (callback) {
 // is called if a subscribed object changes
 adapter.on('objectChange', function (id, obj) {
     // Warning, obj can be null if it was deleted
-    adapter.log.info('objectChange ' + id + ' ' + JSON.stringify(obj));
+    adapter.log.debug('objectChange ' + id + ' ' + JSON.stringify(obj));
 });
 
 // is called if a subscribed state changes
 adapter.on('stateChange', function (id, state) {
     // Warning, state can be null if it was deleted
-    adapter.log.info('stateChange ' + id + ' ' + JSON.stringify(state));
+    //adapter.log.debug('stateChange ' + id + ' ' + JSON.stringify(state));
 
     // you can use the ack flag to detect if it is status (true) or command (false)
     if (state && !state.ack) {
@@ -96,7 +96,7 @@ adapter.on('stateChange', function (id, state) {
         var idx = tmp.pop(); // name of the device
         var deviceId = idx.replace(/device_/,'')*1;
         var val = state.val;
-        //adapter.log.info(`stateChange: ${deviceId}: ${dp}: ${val}`);
+        adapter.log.info(`stateChange action: ${deviceId}: ${dp}: ${val}:`);
         if ( dp == 'temp' ) { // set temperature, implies setting mode -> individual
             postResponse('deviced.hvac_zone_set_temperature',deviceId,{ hvac_id: deviceId, mode: 'individual', temp: val });
         }
@@ -140,14 +140,17 @@ adapter.on('stateChange', function (id, state) {
             adapter.log.debug('get_state_from_log');
             postResponse('deviced.deviced_log_get', deviceId, {}, evaluateLog);
         }
+        else if ( dp == 'readConfig' ) { // execute command
+            adapter.log.debug('Read config from device');
+            if ( val ) {
+                get_all_items_once();
+                adapter.setState('readConfig', false);
+            }
+        }
         else if ( dp == 'position' ) { // position change
             var dev = 'device_'+deviceId;
             if ( state.val > 100) adapter.setState(`${dev}.position`,100, true);
             else if ( state.val <0 ) adapter.setState(`${dev}.position`,0, true);
-        }
-        else if ( idx == "Anwesenheit" && dp == 'state'  ) { // presence state changed
-            adapter.log.warn("Presence state changed to " + state.val );
-            change_presence_states(state.val);
         }
         else {
             adapter.log.error(`stateChange for '${dp}' not yet implemented.`);
@@ -328,9 +331,19 @@ function dict_to_array(d) {
     }
     return a;
 }
-/*
- * Callbacks for PostResponse
- */
+
+function saveLogToFile(logs) {
+    try {
+        fs.copyFileSync('/tmp/becker.log', '/tmp/becker.log.1');
+    }
+    catch (error) {}
+    let s = '';
+    for (var x in logs) {
+        s += JSON.stringify(logs[x]) + '\n';
+    }
+    fs.writeFileSync('/tmp/becker.log',s);
+}
+
 function evaluateLog(error, command, deviceId, result) {
     if (error) {
         adapter.log.error('Error for "' + command + "': " + error);
@@ -338,6 +351,7 @@ function evaluateLog(error, command, deviceId, result) {
     }
     if( 'result' in result && 'log' in result['result']) {
     	var logs = result['result']['log'];
+    	saveLogToFile(logs);
         //adapter.log.debug('-----------------------------------------------');
         adapter.log.debug('evaluateLog: START'); // + JSON.stringify(logs));
         adapter.getState('lastlogtime', function (err,state) {
@@ -350,88 +364,87 @@ function evaluateLog(error, command, deviceId, result) {
             for (var i=logs.length-1; i>0; i-- ) {
                 var event = logs[i];
                 if ( event['type'] != 'item-event' ) continue;
-                //adapter.log.debug("evaluateLog: Loop: " + i+ ", " + JSON.stringify(event));
-                var id = event['item'];
+                //if ( event['message'].indexOf("Schlafzimmer")>-1) {
+                //    adapter.log.debug("evaluateLog: Loop: " + i + ", " + JSON.stringify(event));
+                //}
+                var ids = [ event['item'] ];
                 var date = event['date'] + "_" + event['time'];
                 if ( date <= lasttime && false ) break;
+                var cmd;
                 if ( event['message'].indexOf('Command') > -1) {
                     var cmd1 = event['message'].replace(/.*Command (.*) for.*/,`$1`);
                     if ( ! ( cmd1 in map_cmd ) ) continue;
-                    var cmd = map_cmd[cmd1];
-                    //adapter.log.debug("evaluateLog: " + id+": "+cmd );
+                    cmd = map_cmd[cmd1];
+                    //adapter.log.debug("evaluateLog: " + ids[0]+": "+cmd );
                 }
                 else if ( event['message'].indexOf('trigger')>-1 ) {
                     var sender = event['message'].replace(/.*Sender ([^\"]*).*/,`$1`);
-                    var cmd = event['message'].replace(/.*trigger \"(\w*)\".*/,`$1`).replace("pos","preset");
-                    if ( ! ( sender in devicemap ) ) continue;
-                    id = devicemap[sender];
-                    //adapter.log.debug("evaluateLog: " + date + "(" + lasttime + ") Remote " + sender + "("+id+"): "+cmd);
-                }
-                else {
-                    adapter.log.debug("evaluateLog: Unknown: " + id + ": " + JSON.stringify(event['message']));
-                    continue;
-                }
-                if ( ! (id in list) ) {
-                    if ( cmd == "stop" ) {
-                        list[id] = [{t: parseFloat(event['time_internal'])}];
+                    cmd = event['message'].replace(/.*trigger \"(\w*)\".*/,`$1`).replace("pos","preset");
+                    if ( sender.indexOf("Alle")>-1 ) {
+                        ids = [];
+                        sender = sender.replace(" Alle","");
+                        for (var s in devicemap ) {
+                            if ( s.indexOf(sender)>-1 ) {
+                                ids.push(devicemap[s]);
+                            }
+                        }
+                        //adapter.log.debug("ALLE: " + sender + ", " + JSON.stringify(ids));
                     }
                     else {
-                        list[id] = [ {pos: positions[cmd]} ];
+                        if ( sender in devicemap ) {
+                            ids = [devicemap[sender]];
+                        }
+                        else
+                            continue;
                     }
+                    //adapter.log.debug("evaluateLog: " + date + "(" + lasttime + ") Remote " + sender + "("+ids+"): "+cmd);
                 }
-                else if ( 't' in list[id][0] ) {
+                else {
+                    adapter.log.warn("evaluateLog: Unknown: " + id + ": " + JSON.stringify(event['message']));
+                    continue;
+                }
+                //adapter.log.debug("CMD: "+cmd);
+                for (var id of ids ) {
+                    //adapter.log.debug("id: "+id + ", "+ JSON.stringify(list[id] || list));
+                    if (!(id in list)) {
+                        if (cmd == "stop") {
+                            list[id] = [{t: parseFloat(event['time_internal'])}];
+                        }
+                        else {
+                            list[id] = [{pos: positions[cmd]}];
+                        }
+                    }
+                    else if ('t' in list[id][0]) {
                         var dt = parseFloat(list[id][0]['t']) - parseFloat(event['time_internal']);
                         //adapter.log.debug("evaluateLog: finish: "+ id + ", " + JSON.stringify(list[id])+", " + max_durations[id]);
-                        if ( dt > 30 && cmd != "stop" ) {
+                        if (dt > 30 && cmd != "stop") {
                             // stop chain here
                             var p = positions[cmd];
-                            for ( var j=1; j<list[id].length; j++ ) {
+                            for (var j = 1; j < list[id].length; j++) {
                                 p += list[id][j]["dt"] * list[id][j]["direction"] / max_durations[id] * 100.0;
                             }
-                            list[id] = [ { pos: p } ];
+                            list[id] = [{pos: p}];
                         }
                         else {
                             // continue chain
-                            list[id].unshift( {t: parseFloat(event['time_internal']) } );
+                            list[id].unshift({t: parseFloat(event['time_internal'])});
                             list[id][1] = {"dt": dt, "direction": map_cc[cmd][1]};
                         }
+                    }
                 }
             }
             for ( var id in list ) {
                 var p = list[id][0]["pos"];
-                adapter.log.info(`evaluateLog: setState: device_${id}.position: ` + p);
+                adapter.log.debug(`evaluateLog: update State: device_${id}.position: ` + p);
                 adapter.setState(`device_${id}.position`,p, true);
             }
             var acttime = strftime('%F_%H:%M:%S',new Date());
-            //adapter.log.debug(`evaluateLog: setState: lastlogtime:` + acttime);
+            //adapter.log.debug(`evaluateLog: update lastlogtime:` + acttime);
             adapter.setState('lastlogtime',acttime,true);
         });
     }
 }
 
-function change_presence_states(trigger) {
-    adapter.getStates('*.trigger.' + trigger, (error,devices) => {
-        if (error) {
-            adapter.log.error('change_presence_state: Error for "' + trigger + "': " + error);
-            return;
-        }
-        for ( var dev in devices ) {
-            var devname = dev.replace(/.*\.(\w*)\.trigger\..*/g,"$1");
-            var state = devices[dev];
-            if ( state ) {
-                var [s,cmd,act] = state.val.split("/");
-                adapter.log.warn("change_presence_state: " + devname + ": " + cmd + ", " + act);
-                if ( check_schedule(s) ) {
-                    adapter.log.debug("CHANGE_PRESENCE_STATES: schedule passed. Change state.");
-                    adapter.setState(devname + "." + cmd, act, false);
-                }
-                else {
-                    adapter.log.debug("CHANGE_PRESENCE_STATES: schedule failed. Do nothing.");
-                }
-            }
-        }
-    });
-}
 function updateDevices(err,devices) {
     for (var x of devices ) {
         var id = x.native.id;
@@ -468,7 +481,7 @@ function evaluateConfig(error, command, deviceId, result) {
         adapter.log.error('Error for "' + command + "': " + error);
         return;
     }
-    adapter.log.debug('evaluateConfig: ' + command + '('+deviceId+'): ' + JSON.stringify(result));
+    //adapter.log.debug('evaluateConfig: ' + command + '('+deviceId+'): ' + JSON.stringify(result));
     if ( command == 'deviced.item_get_config' ) {
         if ( 'temp-comfort' in result.result.config ) {
             postResponse('deviced.hvac_zone_get_mode',deviceId,{ hvac_id: deviceId },evaluateConfig);
@@ -541,7 +554,6 @@ function evaluateItemsList(error, command, deviceId, result) {
                 else if (item['type'] == 'remote') {  // remote sender
                     createChannel('device', item['id'], item['name'], 'remote');
                     createObjectState('remote_type', item['id'], item['remote_type'], 1);
-                    createObjectState('trigger', item['id'], 'none', 1);
                 }
                 else if (item['type'] == 'scene') {
 
@@ -675,110 +687,6 @@ function get_all_items_once() {
     postResponse('deviced.deviced_get_item_list',null,{},evaluateItemsList);
 }
 
-function encode_schedule(array_of_days,time,months,days_of_months) {
-    var hour = "*", min = "*", aod = "*";
-    if ( array_of_days ) {
-        aod = array_of_days.join(',');
-    }
-    if ( time ) {
-        time = time.replace(':', '');
-        hour = parseInt(time.substr(0, 2));
-        min = parseInt(time.substr(2, 2));
-    }
-    var m = "*";
-    if ( months && Array.isArray(months) ) {
-        m = months.join(",");
-    }
-    var dom = "*";
-    if ( days_of_months && Array.isArray(days_of_months) ) {
-        dom = days_of_months.join(",");
-    }
-    return min + " " + hour + " " + dom + " " + m + " " + aod;
-}
-
-function decode_schedules(sched) {
-    var [min,hour,dom,months,d,rest] = sched.split(" ");
-    adapter.log.warn("DECODE: " + sched + ": " + [min,hour,dom,months,d,rest].join(", "));
-    var array_of_days = (d != "*") ? d.split(",").map(Number) : undefined;
-    var m = (months != "*") ? months.split(",") : undefined;
-    var dom = (dom != "*") ? dom.split(",") : undefined;
-    var time = undefined;
-    if ( ! (min == "*" && hour == "*") ) {
-        time = ("0" + hour).slice(-2) + ":" + ("0" + min).slice(-2);
-    }
-    return [ array_of_days, time, m, dom ];
-}
-
-function check_schedule(sched) {
-    var now = new Date();
-    var arr = sched.split(" ");
-    var array_of_days = (arr[4] != "*") ? d.split(",").map(Number) : [0,1,2,3,4,5,6];
-    if ( ! ( now.getDay() in array_of_days) ) { return false; }
-    adapter.log.debug("CHECK:SCHEDULE: " + arr.join(",") + ", " + now.getHours() + ":" + now.getMinutes() );
-    if ( arr[1] == "*" || now.getHours() >= Number(arr[1]) ) {
-        if ( arr[0] == "*" || now.getMinutes() >= Number(arr[0]) ) {
-            return true;
-        }
-    }
-    return false;
-}
-
-function read_data() {
-    data_dir = adapter.adapterDir.substr(0,adapter.adapterDir.indexOf('node_modules')) + "iobroker-data/files/becker/";
-    schedules_file = data_dir + "schedules.json";
-    adapter.log.debug("Read schedules from: " + schedules_file);
-    if ( fs.existsSync(schedules_file) ) {
-        var json = fs.readFileSync(schedules_file);
-        //adapter.log.debug(json);
-        schedules = JSON.parse(json);
-        var scheds = { "schedule": {}, "present": {}, "absent": {}};
-        for (var s of schedules ) {
-            if (s.trigger in scheds) {
-                scheds[s.trigger][s.id] = [];
-                adapter.log.debug(JSON.stringify(s));
-                //adapter.log.debug("cron: " + "device_" + s.id + ": " + encode_schedule(s.days,s.time,s.months,s.dom) + "/" + s.command)
-                scheds[s.trigger][s.id].push(encode_schedule(s.days, s.time, s.months, s.dom) + "/" + s.state + "/" + s.action);
-            }
-        }
-        for ( var t in scheds ) {
-            for ( var id in scheds[t] ) {
-                var s = scheds[t][id];
-                createObjectState("trigger." + t, id, s.join(";"));
-            }
-        }
-    }
-    else {
-        adapter.log.warn("schedules.json not found");
-        schedules = [];
-    }
-}
-
-function save_data() {
-    adapter.getStates("becker.0.*", (error,devices) => {
-        if (error) {
-            adapter.log.error('save_data: Error for "' + command + "': " + error);
-            return;
-        }
-        var schedule = [];
-        //adapter.log.warn(JSON.stringify(devices));
-        for (var dev in devices ) {
-            var state = devices[dev];
-            if ( dev.indexOf(".trigger.")>-1 && state && state.val ) {
-                adapter.log.warn("save_data: dev: " + dev + ", " + state.val);
-                var id = dev.replace(/.*device_(\d*)\..*/g, "$1");
-                var trigger = dev.replace(/.*trigger\./g, "");
-                var [s, cmd, act] = state.val.split("/");
-                //adapter.log.debug("TRIGGER: " + id + ", " + cmd + ", " + act + ", " + trigger + ", " + s);
-                var x = {id: id, trigger: trigger, state: cmd, action: act};
-                [x.days, x.time, x.months, x.dom] = decode_schedules(s);
-                //adapter.log.debug("sched: " + JSON.stringify(x));
-                schedule.push(x);
-            }
-        }
-        adapter.log.debug("Write schedules: " + JSON.stringify(schedule));
-        fs.writeFileSync(schedules_file,JSON.stringify(schedule));
-    });
-}
 
 function main() {
 
@@ -786,7 +694,9 @@ function main() {
     // adapter.config:
     adapter.log.info("CONFIG: " + JSON.stringify(adapter.config));
     shutter_duration = { h: adapter.config.seconds_h, l: adapter.config.seconds_l }; // seconds for complete closure of shutters
-    positions = { 'up': 0, 'down': 100, 'preset1': adapter.config.pos_preset1, 'preset2': adapter.config.pos_preset2 };
+    //positions = { 'up': 0, 'down': 100, 'preset1': adapter.config.pos_preset1, 'preset2': adapter.config.pos_preset2 };
+    positions = { 'up': 0, 'down': 100, 'preset1': 90, 'preset2': 75 };
+    adapter.log.debug('positions: '+JSON.stringify(positions));
     adapter.log.info('loglevel: '+adapter.common.loglevel);
 
     if (adapter.config.ipaddress === '' || adapter.config.ipaddress === '0.0.0.0') {
@@ -794,18 +704,23 @@ function main() {
         return;
     }
     get_all_items_once();
-    read_data();
-
+/*    adapter.getState('readConfig',function (err,stat) {
+        if ( err === null && stat === null ) {
+            createObjectState('readConfig',null,false);
+            get_all_items_once();
+            adapter.setState('readConfig',false);
+        }
+        if ( stat && stat.val ) {
+            get_all_items_once();
+            adapter.setState('readConfig',false);
+        }
+    });*/
+    postResponse("deviced.deviced_log_get", null, {}, evaluateLog);
     adapter.subscribeStates('*');
-    adapter.subscribeForeignStates('javascript.0.Anwesenheit.state');
-    //postResponse("deviced.deviced_log_get", null, {}, evaluateLog);
-    //adapter.getChannels( updateDevices  );
-    var cronJob = cron.job("0 */5 * * * *", function(){
+    var cronJob = cron.job("0 */6 * * * *", function(){
         adapter.log.debug("CRON: fetch becker event log...");
         postResponse("deviced.deviced_log_get", null, {}, evaluateLog);
         adapter.getChannels( updateDevices  );
-        save_data();
     });
     cronJob.start();
-    setTimeout( function () { save_data() }, 5000);
 }

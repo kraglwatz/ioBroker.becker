@@ -1,0 +1,70 @@
+{
+  "positions": {
+    "device_1": {
+      "up": 0,
+      "down": 100,
+      "preset1": 90,
+      "preset2": 75
+    },
+    "device_6": {
+      "up": 0,
+      "down": 100,
+      "preset1": 90,
+      "preset2": 75
+    },
+    "device_4": {
+      "up": 0,
+      "down": 100,
+      "preset1": 90,
+      "preset2": 75
+    },
+    "device_7": {
+      "up": 0,
+      "down": 100,
+      "preset1": 90,
+      "preset2": 75
+    },
+    "device_9": {
+      "up": 0,
+      "down": 100,
+      "preset1": 90,
+      "preset2": 75
+    },
+    "device_11": {
+      "up": 0,
+      "down": 100,
+      "preset1": 90,
+      "preset2": 75
+    },
+    "device_13": {
+      "up": 0,
+      "down": 100,
+      "preset1": 90,
+      "preset2": 75
+    },
+    "device_15": {
+      "up": 0,
+      "down": 100,
+      "preset1": 90,
+      "preset2": 50
+    },
+    "device_16": {
+      "up": 0,
+      "down": 100,
+      "preset1": 90,
+      "preset2": 75
+    },
+    "device_17": {
+      "up": 0,
+      "down": 100,
+      "preset1": 90,
+      "preset2": 75
+    },
+    "device_49": {
+      "up": 0,
+      "down": 100,
+      "preset1": 90,
+      "preset2": 75
+    }
+  }
+}

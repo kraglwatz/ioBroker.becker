@@ -56,7 +56,7 @@ var max_durations = {};
 var deviceId = 1;
 var id_count = 0;
 
-function getBoolean(val) {	
+function getBoolean(val) {
 	if (typeof val === 'boolean' ) {
 		return val;
 	}
@@ -118,22 +118,28 @@ adapter.on('stateChange', function (id, state) {
         	adapter.getState('device_'+deviceId+'.schedule', function (e,s) {
         		postResponse('deviced.hvac_zone_set_schedule',deviceId,{ hvac_id: deviceId, enabled: getBoolean(val) } );
         	});
-        } 
+        }
         else if ( ['up','down','stop','preset1','preset2'].indexOf(dp)>-1 ) { // execute command
             move_shutter(deviceId,dp);
-            adapter.setState('device_'+deviceId+'.command',dp,1);
+            setState('device_'+deviceId+'.command',dp,1);
+        }
+        else if ( dp.indexOf('pos_') == 0 ) {
+            let x = dp.replace(/^pos_/,'');
+            if ( x in config_states.positions[idx] ) {
+                config_states.positions[idx][x] = val;
+            }
         }
         else if ( dp == 'command' ) { // execute command
             if ( val in commands ) {
-                var dev = 'device_'+deviceId;
                 move_shutter(deviceId,val);
-                adapter.setState(`${dev}.${dp}`,val, true, 1);
+                adapter.log.debug("setState: " + `${idx}.${dp}:${val}`);
+                setState(`${idx}.${dp}`,val, true, 1);
                 var pos;
                 if ( val == "up") { pos = 0; }
                 else if ( val == "down" ) { pos = 100; }
                 else if ( val == "preset1" ) { pos = 90; }
                 else if ( val == "preset2" ) { pos = 70; }
-                adapter.setState(`${dev}.position`,pos,1);
+                setState(`${idx}.position`,pos,1);
             }
         }
         else if ( dp == 'getstate' ) { // execute command
@@ -144,13 +150,12 @@ adapter.on('stateChange', function (id, state) {
             adapter.log.debug('Read config from device');
             if ( val ) {
                 get_all_items_once();
-                adapter.setState('readConfig', false);
+                setState('readConfig',false);
             }
         }
         else if ( dp == 'position' ) { // position change
-            var dev = 'device_'+deviceId;
-            if ( state.val > 100) adapter.setState(`${dev}.position`,100, true);
-            else if ( state.val <0 ) adapter.setState(`${dev}.position`,0, true);
+            if ( state.val > 100) setState(`${idx}.position`,100, true);
+            else if ( state.val <0 ) setState(`${idx}.position`,0, true);
         }
         else {
             adapter.log.error(`stateChange for '${dp}' not yet implemented.`);
@@ -214,40 +219,50 @@ var roles = {
     "stop": { name: "Shutter command STOP",role: "command" },
     "preset1": { name: "Shutter command PRESET1",role: "command" },
     "preset2": { name: "Shutter command PRESET2",role: "command" },
+    "command": { name: "last shutter command",role: "command" },
+    "max_duration": { name: "duration",role: "time" },
+    "position": { name: "closure state of shutter",role: "percentage" },
 }
 
-
-function createChannel(device,id,name,role) {
+function createChannel(device,id,properties) {
+    debug("createChannel: "+device+"_"+id+", "+JSON.stringify(properties));
     adapter.setObject(device + '_' + id, {
         type: 'channel',
-        common: {
-            "name": name,
-            "role": (role ? role : type),
-            "room": 'none'
-        },
+        common: properties,
         native: {
             "id": id
         }
     });
 }
 
-function createObjectState(state,id,value) {
+function setState(dev,value,confirm) {
+    //adapter.log.debug(`setState: ${dev} -> ${value} (${confirm})`);
+    adapter.setState(dev,value,confirm, function (err) {
+        // analyse if the state could be set (because of permissions)
+        if (err) adapter.log.error(err);
+   });
+}
+
+function createObjectState(state,id,value,properties = null) {
     var dev = state;
     if ( id  ) {
         dev = 'device_' + id + '.' + state;
     }
-    adapter.log.debug("createObjectState: " + dev + " => " + value);
+    adapter.log.debug("createObjectState: " + dev + " => " + value + ", " + JSON.stringify(properties == null ? {} : properties));
+    if ( properties == null ) {
+        properties = {
+            role: (state in roles) ? roles[state]['role'] : 'indicator',
+            name: (state in roles ? roles[state]['name'] : state),
+            type: typeof value,
+        }
+    }
     adapter.setObject(dev, {
         type: 'state',
-        common: {
-            "name": (state in roles ? roles[state]['name'] : state),
-            "type": typeof value,
-            "role": (state in roles ? roles[state]['role'] : 'indicator')
-        },
+        common: properties,
         native: {}
     }, function (err, obj) {
-        if ( value ) {
-            adapter.setState(dev, value, true);
+        if ( value != null ) {
+            setState(dev, value, true);
         }
     } );
 }
@@ -320,9 +335,11 @@ function strftime(sFormat, date) {
 
 var map_cmd = { 'move(1)': 'down', 'move(-1)': 'up', 'move(0)': 'stop', 'movepreset(1)': 'preset1', 'movepreset(2)': 'preset2' };
 var map_cc = { 'down': ['move', 1], 'up': ['move', -1], 'stop': ['move',0], 'preset1': ['movepreset',1], 'preset2': ['movepreset',2] };
-
 var shutter_duration;
-var positions;
+var config_states = { positions: {} };
+var default_positions = { 'up': 0, 'down': 100, 'preset1': 90, 'preset2': 75 };
+
+var config_file = __dirname + '/becker-config.json';
 
 function dict_to_array(d) {
     var a = [];
@@ -344,13 +361,35 @@ function saveLogToFile(logs) {
     fs.writeFileSync('/tmp/becker.log',s);
 }
 
+function dump_config_parameters() {
+    fs.writeFile(config_file, JSON.stringify(config_states,null,2), (err) => {
+        if (err) throw err;
+        adapter.log.info('Config data written to file '+ config_file);
+    });
+}
+
+function map_devices(name) {
+    name = name.replace(" Alle","").replace(/\s*\(\w*\)/,"");
+    var ids = [];
+    for (var s in devicemap ) {
+        if ( s.indexOf(name) == 0 ) {
+            ids.push(devicemap[s]);
+        }
+    }
+    return ids;
+}
+
+function time_diff(a,b) {
+
+}
 function evaluateLog(error, command, deviceId, result) {
     if (error) {
         adapter.log.error('Error for "' + command + "': " + error);
         return;
     }
     if( 'result' in result && 'log' in result['result']) {
-    	var logs = result['result']['log'];
+        var logs = result['result']['log'];
+        //adapter.log.debug("log file: "+logs)
     	saveLogToFile(logs);
         //adapter.log.debug('-----------------------------------------------');
         adapter.log.debug('evaluateLog: START'); // + JSON.stringify(logs));
@@ -361,86 +400,64 @@ function evaluateLog(error, command, deviceId, result) {
             }
             var lasttime = state ? state.val : "0000-00-00_00:00:00";
             var list = {};
+            var match_strings = {
+                command: [ /Command ((\w+)\([0-9-]+\)) for Device \"([^\"]*)\".*/, function(a) { return [ a[1],map_devices(a[2]), map_cmd[a[0]] ]; } ],
+                remote: [ /Remote \"Sender ([^\"]*)\" triggered with trigger "(\w*)\".*/, function(a) { return [ "move", map_devices(a[0]), a[1] ]; } ]
+            }
+            var tl = {};
             for (var i=logs.length-1; i>0; i-- ) {
                 var event = logs[i];
+                var date = Date.parse(event['date'] + "T" + event['time'])/1000;
                 if ( event['type'] != 'item-event' ) continue;
-                //if ( event['message'].indexOf("Schlafzimmer")>-1) {
-                //    adapter.log.debug("evaluateLog: Loop: " + i + ", " + JSON.stringify(event));
-                //}
-                var ids = [ event['item'] ];
-                var date = event['date'] + "_" + event['time'];
-                if ( date <= lasttime && false ) break;
-                var cmd;
-                if ( event['message'].indexOf('Command') > -1) {
-                    var cmd1 = event['message'].replace(/.*Command (.*) for.*/,`$1`);
-                    if ( ! ( cmd1 in map_cmd ) ) continue;
-                    cmd = map_cmd[cmd1];
-                    //adapter.log.debug("evaluateLog: " + ids[0]+": "+cmd );
-                }
-                else if ( event['message'].indexOf('trigger')>-1 ) {
-                    var sender = event['message'].replace(/.*Sender ([^\"]*).*/,`$1`);
-                    cmd = event['message'].replace(/.*trigger \"(\w*)\".*/,`$1`).replace("pos","preset");
-                    if ( sender.indexOf("Alle")>-1 ) {
-                        ids = [];
-                        sender = sender.replace(" Alle","");
-                        for (var s in devicemap ) {
-                            if ( s.indexOf(sender)>-1 ) {
-                                ids.push(devicemap[s]);
+                for (var x in match_strings ) {
+                    var r = event['message'].match(match_strings[x][0]);
+                    if ( r != null ) {
+                        r.shift();
+                        result = match_strings[x][1](r);
+                        var element = [ date, result[2] ];
+                        for ( var j=0; j< result[1].length; j++ ) {
+                            var entry = 'device_'+result[1][j];
+                            if ( result[0].indexOf("move") > -1 ) {
+                                if (  tl[entry] == null ) {
+                                    tl[entry] = [ element ];
+                                }
+                                else {
+                                    tl[entry].push(element);
+                                }
                             }
                         }
-                        //adapter.log.debug("ALLE: " + sender + ", " + JSON.stringify(ids));
+                        break
                     }
-                    else {
-                        if ( sender in devicemap ) {
-                            ids = [devicemap[sender]];
-                        }
-                        else
-                            continue;
-                    }
-                    //adapter.log.debug("evaluateLog: " + date + "(" + lasttime + ") Remote " + sender + "("+ids+"): "+cmd);
+                }
+            }
+            for ( var dev in tl ) {
+                var lastpos = null;
+                if ( tl[dev][0][1] != "stop" ) {
+                    lastpos = config_states.positions[dev][tl[dev][0][1]];
                 }
                 else {
-                    adapter.log.warn("evaluateLog: Unknown: " + id + ": " + JSON.stringify(event['message']));
-                    continue;
-                }
-                //adapter.log.debug("CMD: "+cmd);
-                for (var id of ids ) {
-                    //adapter.log.debug("id: "+id + ", "+ JSON.stringify(list[id] || list));
-                    if (!(id in list)) {
-                        if (cmd == "stop") {
-                            list[id] = [{t: parseFloat(event['time_internal'])}];
-                        }
-                        else {
-                            list[id] = [{pos: positions[cmd]}];
+                    for (var last = 1; last<tl[dev].length-1; last++) {
+                        if ( tl[dev][last][0] - tl[dev][last+1][0] > 30 )  {
+                            break;
                         }
                     }
-                    else if ('t' in list[id][0]) {
-                        var dt = parseFloat(list[id][0]['t']) - parseFloat(event['time_internal']);
-                        //adapter.log.debug("evaluateLog: finish: "+ id + ", " + JSON.stringify(list[id])+", " + max_durations[id]);
-                        if (dt > 30 && cmd != "stop") {
-                            // stop chain here
-                            var p = positions[cmd];
-                            for (var j = 1; j < list[id].length; j++) {
-                                p += list[id][j]["dt"] * list[id][j]["direction"] / max_durations[id] * 100.0;
-                            }
-                            list[id] = [{pos: p}];
-                        }
-                        else {
-                            // continue chain
-                            list[id].unshift({t: parseFloat(event['time_internal'])});
-                            list[id][1] = {"dt": dt, "direction": map_cc[cmd][1]};
-                        }
+                    lastpos = config_states.positions[dev][tl[dev][last+1][1]];
+                    var direction = 0;
+                    for ( var j = last; j>0; j-- ) {
+                        direction = map_cc[tl[dev][j][1]][1] * (tl[dev][j-1][0] - tl[dev][j][0]);
+                        lastpos += direction / max_durations[dev] * 100.0;
                     }
+
                 }
-            }
-            for ( var id in list ) {
-                var p = list[id][0]["pos"];
-                adapter.log.debug(`evaluateLog: update State: device_${id}.position: ` + p);
-                adapter.setState(`device_${id}.position`,p, true);
+                adapter.log.debug(`evaluateLog: update State: ${dev}.position: ${parseInt(lastpos)}`);
+                setState(`${dev}.position`,parseInt(lastpos), true);
+                setState(`${dev}.command`,tl[dev][0][1], true);
             }
             var acttime = strftime('%F_%H:%M:%S',new Date());
-            //adapter.log.debug(`evaluateLog: update lastlogtime:` + acttime);
-            adapter.setState('lastlogtime',acttime,true);
+            adapter.log.debug(`evaluateLog: update lastlogtime:` + acttime);
+            setState('lastlogtime',acttime,true);
+            adapter.log.debug('evaluateLog: FINISH'); // + JSON.stringify(logs));
+
         });
     }
 }
@@ -451,7 +468,7 @@ function updateDevices(err,devices) {
         if ( x.common.role == "thermostat" ) {
             adapter.log.debug("THERMOSTAT: " + id + ", " + JSON.stringify(x));
             postResponse('deviced.hvac_zone_get_mode', id, {
-                hvac_id: id
+                hvac_id: parseInt(id)
             }, getValue );
         }
     }
@@ -465,14 +482,14 @@ function getValue(error, command, deviceId, result ) {
     adapter.log.debug('getValue: ' + command + '('+deviceId+'): ' + JSON.stringify(result));
     var dev = "device_" + deviceId + ".";
     if ( command == 'deviced.hvac_zone_get_mode' ) {
-        adapter.setState(dev + 'mode', result.result.mode, true );
+        setState(dev + 'mode', result.result.mode, true );
         postResponse('deviced.hvac_zone_get_temperature', deviceId, {
-            hvac_id: deviceId,
+            hvac_id: parseInt(deviceId),
             mode: result.result.mode
         }, getValue);
     }
     else if (command == 'deviced.hvac_zone_get_temperature') {
-        adapter.setState(dev + 'temp', result.result.temp, true );
+        setState(dev + 'temp', result.result.temp, true );
     }
 }
 
@@ -481,28 +498,28 @@ function evaluateConfig(error, command, deviceId, result) {
         adapter.log.error('Error for "' + command + "': " + error);
         return;
     }
-    //adapter.log.debug('evaluateConfig: ' + command + '('+deviceId+'): ' + JSON.stringify(result));
+    adapter.log.debug('evaluateConfig: ' + command + '('+deviceId+'): ' + JSON.stringify(result));
     if ( command == 'deviced.item_get_config' ) {
         if ( 'temp-comfort' in result.result.config ) {
-            postResponse('deviced.hvac_zone_get_mode',deviceId,{ hvac_id: deviceId },evaluateConfig);
+            postResponse('deviced.hvac_zone_get_mode',deviceId,{ hvac_id: parseInt(deviceId) },evaluateConfig);
         }
     }
     else if ( command == 'deviced.hvac_zone_get_mode' ) {
         if ( 'result' in result && 'mode' in result['result'] ) {
             var mode = result['result']['mode'];
-            createObjectState('mode',deviceId,mode);
+            createObjectState('mode',deviceId,mode,{type: "text", name: "Temperature mode", role: "mode"});
             postResponse('deviced.hvac_zone_get_temperature', deviceId, {
-                hvac_id: deviceId,
+                hvac_id: parseInt(deviceId),
                 mode: mode
             }, evaluateConfig);
         }
     }
     else if (command == 'deviced.hvac_zone_get_temperature') {
         if ( 'result' in result && 'temp' in result['result'] ) {
-            createObjectState('temp',deviceId,result['result']['temp']);
+            createObjectState('temp',deviceId,result['result']['temp'],{type: "number", name: "temperature", role: "value.temperature"});
         }
         else {
-            createObjectState('temp',deviceId,-1);
+            createObjectState('temp',deviceId,-1,{type: "text", name: "Temperature mode", role: "value.temperature"});
         }
     }
 }
@@ -511,6 +528,33 @@ function printResult(error, command, deviceId, result) {
 	adapter.log.info("INFO: "+command+" RESULT("+deviceId+"): "+JSON.stringify(result));
 }
 
+var dict_update = function (dict,key,update,multiple = []) {
+    if ( ! (key in dict ) ) {
+        dict[key] = {}
+    }
+    for ( var k in update ) {
+        if ( k in dict[key] ) {
+            if ( multiple.indexOf(k)>-1 ) {
+                dict[key][k].push(update[k]);
+            }
+            else if ( update[k] ) {
+                dict[key][k] = update[k];
+            }
+        }
+        else {
+            if ( multiple.indexOf(k)>-1 ) {
+                dict[key][k] = [ update[k] ];
+            }
+            else if ( update[k] ) {
+                dict[key][k] = update[k];
+            }
+        }
+    }
+}
+
+var debug = function(s) {
+    adapter.log.debug(s);
+}
 
 function evaluateItemsList(error, command, deviceId, result) {
     if (error) {
@@ -519,24 +563,102 @@ function evaluateItemsList(error, command, deviceId, result) {
     }
     adapter.log.debug('evaluating items list for command "' + command + '": ' + JSON.stringify(result));
 
+    var index = {};
     if ('result' in result) {
         if ('item_list' in result['result']) {
-            createObjectState('lastlogtime',null,"0000-00-00_00:00:00");
+            //fs.writeFileSync(__dirname+'/itemList.json',JSON.stringify(result['result'],null,2));
+            createObjectState('lastlogtime',null,"0000-00-00_00:00:00",{type: "text", name: "time string", role: "time"});
+
             for (var item of result['result']['item_list']) {
-                if (item['type'] == 'group' && item.backend ) {
+                if ( 'items' in item ) {
+                    for ( let x of item['items'] ) {
+                        dict_update(index,x,{ [item['type']]: item['name'], hvac_id: item['hvac_id']},['group','scene']);
+                    }
+                }
+                else {
+                    var type = item['type'];
+                    if ( 'backend' in item && item['type'] == "group ") {
+                        type = "device";
+                    }
+                    dict_update(index,item['id'],{ type: type, name: item['name'], dev: item['device_type'], feedback: item['feedback'], backend: item['backend'] },['group','scene']);
+                }
+            }
+            //fs.writeFileSync(__dirname+"/index.json","INDEX: "+JSON.stringify(index,null,2));
+            var devlist = [];
+            for ( var id in index ) {
+                if ( 'dev' in index[id] ) {
+                    let item = index[id];
+                    let mydev = `device_${id}`
+                    devlist.push(mydev);
+                    var name = item['name'];
+                    createChannel('device', id, {name: name, role: item['dev'], room: item['room']});
+                    if (item['dev'] == 'shutter') {
+                        var x = name.match(/\s*\((h)\)\s*/i) || ['', 'l'];
+                        if (x[0]) {
+                            name = name.replace(x[0], '');
+                        }
+                        devicemap[name] = id;
+                        max_durations[mydev] = shutter_duration[x[1]];
+                        createObjectState("max_duration", id, shutter_duration[x[1]],{type: "number", name: "time for shutting", role: "seconds"});
+                        createObjectState("position", id, 0,{type: "percentage", name: "shutting state", role: "position"});
+                        createObjectState('command', id, '',{type: "text", name: "last shutter command", role: "move"});
+                        if ( ! (mydev in config_states.positions) ) {
+                            config_states.positions[mydev] = {};
+                        }
+                        for ( var pos in default_positions ) {
+                            if ( ! (pos in config_states.positions[mydev]) ) {
+                                config_states.positions[mydev][pos] = default_positions[pos];
+                            }
+                            createObjectState(`pos_${pos}`, id,config_states.positions[mydev][pos],{type: "percentage", name: "default shutting state", role: "position"});
+                        }
+                    }
+                    else if (item['dev'] == 'thermostat') {
+                        adapter.log.debug("evaluateConfig: "+JSON.stringify(item));
+                        postResponse('deviced.item_get_config', id, {item_id: parseInt(id)}, evaluateConfig);
+                    }
+                }
+            }
+            debug("Searching for obsolete channels...");
+            adapter.getChannels((err,chan) => {
+                if (err) { adapter.log.warning(err); }
+                for (var x in chan ) {
+                    var dev = chan[x]["_id"].replace(/^.*\./,"");
+                    if ( devlist.indexOf(dev) == -1 ) {
+                        debug("Deleting channel "+dev);
+                        adapter.deleteChannel(dev,null,(err) => {
+                            if (err) { adapter.log.warning("problems when deleting channel "+dev)}
+                        });
+                    }
+                }
+            });
+
+            /*
+            for (var item of result['result']['item_list']) {
+                if (item['type'] == 'group' &&  item.backend) {
                     if ('backend' in item) {  // physical object
-                        var x = item['name'].match(/\s*\((h)\)\s*/i) || ['', 'l'];
+                        let mydev = `device_${item['id']}`
+                        var x = item['name'].match(/\s*\((h)\)\s* /i) || ['', 'l'];
                         if (x[0]) {
                             item['name'] = item['name'].replace(x[0], '');
                         }
-                        createChannel('device', item['id'], item['name'], item['device_type']);
+                        createChannel('device', item['id'], { name: item['name'], role: item['device_type']});
                         postResponse('deviced.item_get_config', item['id'], {item_id: item['id']}, evaluateConfig);
                         if (item['device_type'] == 'shutter') {
                             devicemap[item['name']] = item['id']
-                            max_durations[item['id']] = shutter_duration[x[1]];
+                            max_durations[mydev] = shutter_duration[x[1]];
                             createObjectState("max_duration", item['id'], shutter_duration[x[1]]);
                             createObjectState("position", item['id'], 0);
-                            createObjectState('command', item['id'], '');
+                            createObjectState('command', item['id'], 'test');
+                            if ( ! (mydev in config_states.positions) ) {
+                                config_states.positions[mydev] = {};
+                            }
+                            for ( var pos in default_positions ) {
+                                if ( ! (pos in config_states.positions[mydev]) ) {
+                                    config_states.positions[mydev][pos] = default_positions[pos];
+                                }
+                                createObjectState(`pos_${pos}`, item['id'],config_states.positions[mydev][pos]);
+                            }
+                            setState(mydev+".position",1,true);
                         }
                         else if (item['device_type'] == 'thermostat') {
                             //postResponse('deviced.item_get_info', item['id'], {item_id: item['id']}, printResult);
@@ -552,7 +674,7 @@ function evaluateItemsList(error, command, deviceId, result) {
                     //createChannel('room', item['id'], item['name'], 'room');
                 }
                 else if (item['type'] == 'remote') {  // remote sender
-                    createChannel('device', item['id'], item['name'], 'remote');
+                    createChannel('device', item['id'], {name: item['name'], role: 'remote'});
                     createObjectState('remote_type', item['id'], item['remote_type'], 1);
                 }
                 else if (item['type'] == 'scene') {
@@ -568,6 +690,7 @@ function evaluateItemsList(error, command, deviceId, result) {
 
                 }
             }
+            */
         }
     }
 }
@@ -635,7 +758,6 @@ function postResponse(command, deviceId, args, callback){
         return;
     }
     var body_string = JSON.stringify(body);
-
     var options = {
         host:    adapter.config.ipaddress,
         port:    '80',
@@ -687,40 +809,46 @@ function get_all_items_once() {
     postResponse('deviced.deviced_get_item_list',null,{},evaluateItemsList);
 }
 
-
 function main() {
 
     // The adapters config (in the instance object everything under the attribute "native") is accessible via
     // adapter.config:
+    adapter.log.info('loglevel: '+adapter.common.loglevel);
     adapter.log.info("CONFIG: " + JSON.stringify(adapter.config));
     shutter_duration = { h: adapter.config.seconds_h, l: adapter.config.seconds_l }; // seconds for complete closure of shutters
     //positions = { 'up': 0, 'down': 100, 'preset1': adapter.config.pos_preset1, 'preset2': adapter.config.pos_preset2 };
-    positions = { 'up': 0, 'down': 100, 'preset1': 90, 'preset2': 75 };
-    adapter.log.debug('positions: '+JSON.stringify(positions));
-    adapter.log.info('loglevel: '+adapter.common.loglevel);
+    adapter.log.debug('positions: '+JSON.stringify(default_positions));
 
     if (adapter.config.ipaddress === '' || adapter.config.ipaddress === '0.0.0.0') {
         adapter.log.error('Please specify IP address');
         return;
+    }
+    if ( fs.existsSync(config_file) ) {
+        var raw = fs.readFileSync(config_file);
+        config_states = JSON.parse(raw);
+        adapter.log.debug("read from file: " + JSON.stringify(config_states));
     }
     get_all_items_once();
 /*    adapter.getState('readConfig',function (err,stat) {
         if ( err === null && stat === null ) {
             createObjectState('readConfig',null,false);
             get_all_items_once();
-            adapter.setState('readConfig',false);
+            setState('readConfig',false);
         }
         if ( stat && stat.val ) {
             get_all_items_once();
-            adapter.setState('readConfig',false);
+            setState('readConfig',false);
         }
     });*/
+    adapter.log.debug("all items read in");
     postResponse("deviced.deviced_log_get", null, {}, evaluateLog);
     adapter.subscribeStates('*');
-    var cronJob = cron.job("0 */6 * * * *", function(){
-        adapter.log.debug("CRON: fetch becker event log...");
+    var cronJob = cron.job("0 */1 * * * *", function(){
+        adapter.log.info("CRON: fetch becker event log...");
         postResponse("deviced.deviced_log_get", null, {}, evaluateLog);
         adapter.getChannels( updateDevices  );
+        dump_config_parameters();
+        //adapter.log.info("CRON: finished...");
     });
     cronJob.start();
 }

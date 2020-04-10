@@ -45,4 +45,4 @@ adapter.getState(`device_${deviceId}.lastlogtime`, function (err,state) {
             }
         }
     }
-}) */
+})

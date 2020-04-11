@@ -1,0 +1,658 @@
+{
+  "item_list": [
+    {
+      "id": 91,
+      "type": "group",
+      "name": "Alle Thermostate",
+      "items": [
+        22,
+        24,
+        50
+      ],
+      "device_type": "thermostat",
+      "feedback": true
+    },
+    {
+      "id": 1,
+      "type": "group",
+      "name": "Wohnzimmer Rechts (h)",
+      "device_type": "shutter",
+      "feedback": false,
+      "backend": "centronic"
+    },
+    {
+      "id": 6,
+      "type": "group",
+      "name": "Schlafzimmer (h)",
+      "device_type": "shutter",
+      "feedback": false,
+      "backend": "centronic"
+    },
+    {
+      "id": 24,
+      "type": "group",
+      "name": "Wohnzimmer",
+      "items": [
+        23
+      ],
+      "device_type": "thermostat",
+      "feedback": true
+    },
+    {
+      "id": 23,
+      "type": "group",
+      "name": "Wohnzimmer",
+      "device_type": "thermostat",
+      "feedback": true,
+      "backend": "knx-rf"
+    },
+    {
+      "id": 22,
+      "type": "group",
+      "name": "Büro",
+      "items": [
+        21
+      ],
+      "device_type": "thermostat",
+      "feedback": true
+    },
+    {
+      "id": 21,
+      "type": "group",
+      "name": "Büro",
+      "device_type": "thermostat",
+      "feedback": true,
+      "backend": "knx-rf"
+    },
+    {
+      "id": 50,
+      "type": "group",
+      "name": "Gäste WC",
+      "items": [
+        48
+      ],
+      "device_type": "thermostat",
+      "feedback": true
+    },
+    {
+      "id": 48,
+      "type": "group",
+      "name": "WC",
+      "device_type": "thermostat",
+      "feedback": true,
+      "backend": "knx-rf"
+    },
+    {
+      "id": 49,
+      "type": "group",
+      "name": "Alle Rollläden",
+      "items": [
+        1,
+        4,
+        6,
+        7,
+        9,
+        11,
+        13,
+        15
+      ],
+      "device_type": "shutter",
+      "feedback": false
+    },
+    {
+      "id": 4,
+      "type": "group",
+      "name": "Wohnzimmer Links (h)",
+      "device_type": "shutter",
+      "feedback": false,
+      "backend": "centronic"
+    },
+    {
+      "id": 7,
+      "type": "group",
+      "name": "Küche (h)",
+      "device_type": "shutter",
+      "feedback": false,
+      "backend": "centronic"
+    },
+    {
+      "id": 9,
+      "type": "group",
+      "name": "WC",
+      "device_type": "shutter",
+      "feedback": false,
+      "backend": "centronic"
+    },
+    {
+      "id": 11,
+      "type": "group",
+      "name": "Gästezimmer",
+      "device_type": "shutter",
+      "feedback": false,
+      "backend": "centronic"
+    },
+    {
+      "id": 13,
+      "type": "group",
+      "name": "Bad",
+      "device_type": "shutter",
+      "feedback": false,
+      "backend": "centronic"
+    },
+    {
+      "id": 15,
+      "type": "group",
+      "name": "Büro",
+      "device_type": "shutter",
+      "feedback": false,
+      "backend": "centronic"
+    },
+    {
+      "id": 16,
+      "type": "group",
+      "name": "Vorne (Straße)",
+      "items": [
+        1,
+        4,
+        13,
+        15
+      ],
+      "device_type": "shutter",
+      "feedback": false
+    },
+    {
+      "id": 17,
+      "type": "group",
+      "name": "Hinten (ohne Schlafzimmer)",
+      "items": [
+        7,
+        9,
+        11
+      ],
+      "device_type": "shutter",
+      "feedback": false
+    },
+    {
+      "id": 8,
+      "type": "room",
+      "name": "Gäste WC",
+      "items": [
+        9,
+        50
+      ],
+      "hvac_id": 50
+    },
+    {
+      "id": 14,
+      "type": "room",
+      "name": "Büro",
+      "items": [
+        15,
+        22
+      ],
+      "hvac_id": 22
+    },
+    {
+      "id": 12,
+      "type": "room",
+      "name": "Bad",
+      "items": [
+        13
+      ]
+    },
+    {
+      "id": 10,
+      "type": "room",
+      "name": "Gästezimmer",
+      "items": [
+        11
+      ]
+    },
+    {
+      "id": 5,
+      "type": "room",
+      "name": "Schlafzimmer",
+      "items": [
+        6
+      ]
+    },
+    {
+      "id": 3,
+      "type": "room",
+      "name": "Wohnzimmer",
+      "items": [
+        4,
+        1,
+        24
+      ],
+      "hvac_id": 24
+    },
+    {
+      "id": 2,
+      "type": "room",
+      "name": "Küche",
+      "items": [
+        7
+      ]
+    },
+    {
+      "id": 18,
+      "type": "scene",
+      "name": "Alle runter",
+      "items": [
+        20
+      ]
+    },
+    {
+      "id": 46,
+      "type": "scene",
+      "name": "Alle hoch",
+      "items": [
+        47
+      ]
+    },
+    {
+      "id": 63,
+      "type": "clock",
+      "name": "Hinten Hoch",
+      "items": [
+        65
+      ]
+    },
+    {
+      "id": 53,
+      "type": "clock",
+      "name": "Hinten Runter",
+      "items": [
+        55
+      ]
+    },
+    {
+      "id": 41,
+      "type": "clock",
+      "name": "Straße Rolläden Hoch",
+      "items": [
+        43
+      ]
+    },
+    {
+      "id": 34,
+      "type": "clock",
+      "name": "Straße Rolläden Runter",
+      "items": [
+        36
+      ]
+    },
+    {
+      "id": 33,
+      "type": "remote",
+      "name": "Sender Schlafzimmer",
+      "remote_type": "shutter",
+      "backend": "centronic",
+      "in_logic": false
+    },
+    {
+      "id": 32,
+      "type": "remote",
+      "name": "Sender Wohnzimmer Links",
+      "remote_type": "shutter",
+      "backend": "centronic",
+      "in_logic": false
+    },
+    {
+      "id": 31,
+      "type": "remote",
+      "name": "Sender Wohnzimmer Rechts",
+      "remote_type": "shutter",
+      "backend": "centronic",
+      "in_logic": false
+    },
+    {
+      "id": 30,
+      "type": "remote",
+      "name": "Sender Wohnzimmer Alle",
+      "remote_type": "shutter",
+      "backend": "centronic",
+      "in_logic": false
+    },
+    {
+      "id": 29,
+      "type": "remote",
+      "name": "Sender Küche",
+      "remote_type": "shutter",
+      "backend": "centronic",
+      "in_logic": false
+    },
+    {
+      "id": 28,
+      "type": "remote",
+      "name": "Sender WC",
+      "remote_type": "shutter",
+      "backend": "centronic",
+      "in_logic": false
+    },
+    {
+      "id": 27,
+      "type": "remote",
+      "name": "Sender Gästezimmer",
+      "remote_type": "shutter",
+      "backend": "centronic",
+      "in_logic": false
+    },
+    {
+      "id": 26,
+      "type": "remote",
+      "name": "Sender Bad",
+      "remote_type": "shutter",
+      "backend": "centronic",
+      "in_logic": false
+    },
+    {
+      "id": 25,
+      "type": "remote",
+      "name": "Sender Büro",
+      "remote_type": "shutter",
+      "backend": "centronic",
+      "in_logic": false
+    },
+    {
+      "id": 59,
+      "type": "favorite",
+      "name": "Alle hoch",
+      "items": [
+        61
+      ],
+      "next_trigger": "cmd0",
+      "color": "#00EE00"
+    },
+    {
+      "id": 70,
+      "type": "favorite",
+      "name": "Alle runter auf Pos. 2",
+      "items": [
+        72
+      ],
+      "next_trigger": "cmd0",
+      "color": "#E31E24"
+    },
+    {
+      "id": 56,
+      "type": "favorite",
+      "name": "Alle ganz runter",
+      "items": [
+        58
+      ],
+      "next_trigger": "cmd0",
+      "color": "#E31E24"
+    },
+    {
+      "id": 47,
+      "type": "commandset",
+      "items": [
+        45
+      ]
+    },
+    {
+      "id": 58,
+      "type": "commandset",
+      "items": [
+        38
+      ]
+    },
+    {
+      "id": 61,
+      "type": "commandset",
+      "items": [
+        60
+      ]
+    },
+    {
+      "id": 72,
+      "type": "commandset",
+      "items": [
+        71
+      ]
+    },
+    {
+      "id": 20,
+      "type": "commandset",
+      "items": [
+        19
+      ]
+    },
+    {
+      "id": 36,
+      "type": "commandset",
+      "items": [
+        35,
+        37,
+        39,
+        40
+      ]
+    },
+    {
+      "id": 43,
+      "type": "commandset",
+      "items": [
+        42,
+        44,
+        51,
+        52
+      ]
+    },
+    {
+      "id": 55,
+      "type": "commandset",
+      "items": [
+        54,
+        57,
+        62
+      ]
+    },
+    {
+      "id": 65,
+      "type": "commandset",
+      "items": [
+        64,
+        66,
+        67
+      ]
+    },
+    {
+      "id": 67,
+      "type": "command",
+      "items": [
+        11
+      ],
+      "target": "deviced",
+      "command": "move",
+      "value": -1
+    },
+    {
+      "id": 66,
+      "type": "command",
+      "items": [
+        9
+      ],
+      "target": "deviced",
+      "command": "move",
+      "value": -1
+    },
+    {
+      "id": 64,
+      "type": "command",
+      "items": [
+        6
+      ],
+      "target": "deviced",
+      "command": "move",
+      "value": -1
+    },
+    {
+      "id": 62,
+      "type": "command",
+      "items": [
+        11
+      ],
+      "target": "deviced",
+      "command": "move",
+      "value": 1
+    },
+    {
+      "id": 57,
+      "type": "command",
+      "items": [
+        7
+      ],
+      "target": "deviced",
+      "command": "move",
+      "value": 1
+    },
+    {
+      "id": 54,
+      "type": "command",
+      "items": [
+        6
+      ],
+      "target": "deviced",
+      "command": "move",
+      "value": 1
+    },
+    {
+      "id": 52,
+      "type": "command",
+      "items": [
+        15
+      ],
+      "target": "deviced",
+      "command": "move",
+      "value": -1
+    },
+    {
+      "id": 51,
+      "type": "command",
+      "items": [
+        13
+      ],
+      "target": "deviced",
+      "command": "move",
+      "value": -1
+    },
+    {
+      "id": 44,
+      "type": "command",
+      "items": [
+        4
+      ],
+      "target": "deviced",
+      "command": "move",
+      "value": -1
+    },
+    {
+      "id": 42,
+      "type": "command",
+      "items": [
+        1
+      ],
+      "target": "deviced",
+      "command": "move",
+      "value": -1
+    },
+    {
+      "id": 40,
+      "type": "command",
+      "items": [
+        15
+      ],
+      "target": "deviced",
+      "command": "move",
+      "value": 1
+    },
+    {
+      "id": 39,
+      "type": "command",
+      "items": [
+        13
+      ],
+      "target": "deviced",
+      "command": "move",
+      "value": 1
+    },
+    {
+      "id": 37,
+      "type": "command",
+      "items": [
+        4
+      ],
+      "target": "deviced",
+      "command": "move",
+      "value": 1
+    },
+    {
+      "id": 35,
+      "type": "command",
+      "items": [
+        1
+      ],
+      "target": "deviced",
+      "command": "move",
+      "value": 1
+    },
+    {
+      "id": 19,
+      "type": "command",
+      "items": [
+        49
+      ],
+      "target": "deviced",
+      "command": "move",
+      "value": 1
+    },
+    {
+      "id": 38,
+      "type": "command",
+      "icon": "button-fav-dn",
+      "items": [
+        49
+      ],
+      "trigger": "cmd0",
+      "target": "deviced",
+      "command": "move",
+      "value": 1
+    },
+    {
+      "id": 71,
+      "type": "command",
+      "icon": "device-shutter",
+      "trigger": "cmd0",
+      "target": "cc-gui",
+      "command": "show-scene",
+      "value": 0,
+      "items": [
+        53
+      ]
+    },
+    {
+      "id": 60,
+      "type": "command",
+      "icon": "button-fav-up",
+      "items": [
+        46
+      ],
+      "trigger": "cmd0",
+      "target": "deviced",
+      "command": "invoke",
+      "value": 1
+    },
+    {
+      "id": 45,
+      "type": "command",
+      "items": [
+        49
+      ],
+      "target": "deviced",
+      "command": "move",
+      "value": -1
+    }
+  ]
+}

@@ -224,15 +224,15 @@ var roles = {
     "position": { name: "closure state of shutter",role: "percentage" },
 }
 
-function createChannel(device,id,properties) {
-    debug("createChannel: "+device+"_"+id+", "+JSON.stringify(properties));
-    adapter.setObject(device + '_' + id, {
+function createChannel(device,properties,callback) {
+    debug("createChannel: "+device+", "+JSON.stringify(properties));
+    adapter.setObject(device, {
         type: 'channel',
         common: properties,
         native: {
-            "id": id
+            "id": device
         }
-    });
+    },callback);
 }
 
 function setState(dev,value,confirm) {
@@ -591,7 +591,8 @@ function evaluateItemsList(error, command, deviceId, result) {
                     let mydev = `device_${id}`
                     devlist.push(mydev);
                     var name = item['name'];
-                    createChannel('device', id, {name: name, role: item['dev'], room: item['room']});
+                    adapter.createDevice(`device_${id}`, {name: name, role: item['dev'], room: item['room']});
+                    //createChannel('device', id, {name: name, role: item['dev'], room: item['room']});
                     if (item['dev'] == 'shutter') {
                         var x = name.match(/\s*\((h)\)\s*/i) || ['', 'l'];
                         if (x[0]) {
@@ -631,66 +632,6 @@ function evaluateItemsList(error, command, deviceId, result) {
                     }
                 }
             });
-
-            /*
-            for (var item of result['result']['item_list']) {
-                if (item['type'] == 'group' &&  item.backend) {
-                    if ('backend' in item) {  // physical object
-                        let mydev = `device_${item['id']}`
-                        var x = item['name'].match(/\s*\((h)\)\s* /i) || ['', 'l'];
-                        if (x[0]) {
-                            item['name'] = item['name'].replace(x[0], '');
-                        }
-                        createChannel('device', item['id'], { name: item['name'], role: item['device_type']});
-                        postResponse('deviced.item_get_config', item['id'], {item_id: item['id']}, evaluateConfig);
-                        if (item['device_type'] == 'shutter') {
-                            devicemap[item['name']] = item['id']
-                            max_durations[mydev] = shutter_duration[x[1]];
-                            createObjectState("max_duration", item['id'], shutter_duration[x[1]]);
-                            createObjectState("position", item['id'], 0);
-                            createObjectState('command', item['id'], 'test');
-                            if ( ! (mydev in config_states.positions) ) {
-                                config_states.positions[mydev] = {};
-                            }
-                            for ( var pos in default_positions ) {
-                                if ( ! (pos in config_states.positions[mydev]) ) {
-                                    config_states.positions[mydev][pos] = default_positions[pos];
-                                }
-                                createObjectState(`pos_${pos}`, item['id'],config_states.positions[mydev][pos]);
-                            }
-                            setState(mydev+".position",1,true);
-                        }
-                        else if (item['device_type'] == 'thermostat') {
-                            //postResponse('deviced.item_get_info', item['id'], {item_id: item['id']}, printResult);
-                            //postResponse('deviced.item_get_state', item['id'], {item_id: item['id']}, printResult);
-                        }
-                        //createObjectState("schedule",item.id);
-                    }
-                    else {
-                        //createChannel('group', item['id'], item['name'], item['device_type']);
-                    }
-                }
-                else if (item['type'] == 'room') {
-                    //createChannel('room', item['id'], item['name'], 'room');
-                }
-                else if (item['type'] == 'remote') {  // remote sender
-                    createChannel('device', item['id'], {name: item['name'], role: 'remote'});
-                    createObjectState('remote_type', item['id'], item['remote_type'], 1);
-                }
-                else if (item['type'] == 'scene') {
-
-                }
-                else if (item['type'] == 'favorite') {
-
-                }
-                else if (item['type'] == 'commandset') {
-
-                }
-                else if (item['type'] == 'command') {
-
-                }
-            }
-            */
         }
     }
 }
@@ -809,6 +750,28 @@ function get_all_items_once() {
     postResponse('deviced.deviced_get_item_list',null,{},evaluateItemsList);
 }
 
+var numTimers = 0;
+
+function create_timer(deviceId,schedule,command) {
+    var timer_count = 0;
+    numTimers += 1;
+    var new_timer = `device_${deviceId}.timer_${numTimers}`;
+    adapter.log.debug("create_timer:" + new_timer);
+    createChannel(new_timer,{
+        name: new_timer,
+        type: 'channel',
+        common: {role: 'timer'},
+        native: {
+            "id": numTimers
+        }
+    },function(err) {
+        if (err) adapter.log.error(err);
+        adapter.log.debug("called: callback");
+        createObjectState(`timer_${numTimers}.schedule`,deviceId,schedule,{role: "schedule",type:"text"});
+        createObjectState(`timer_${numTimers}.command`,deviceId,command,{role: "move",type:"text"});
+    });
+}
+
 function main() {
 
     // The adapters config (in the instance object everything under the attribute "native") is accessible via
@@ -829,6 +792,8 @@ function main() {
         adapter.log.debug("read from file: " + JSON.stringify(config_states));
     }
     get_all_items_once();
+    create_timer(1,"0 */1 * * * *","up");
+    // create timer channel
 /*    adapter.getState('readConfig',function (err,stat) {
         if ( err === null && stat === null ) {
             createObjectState('readConfig',null,false);

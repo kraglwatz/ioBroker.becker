@@ -59,17 +59,9 @@ It includes both code running within iobroker and as vis widget. If you only pla
 
 ## Changelog
 
-### 0.6.0 (2017.01.02)
-* (bluefox) Support of admin3
+### 0.7.0 (20210302)
+* set blind position directly
 
-### 0.5.0
-* (vegetto) include vis widget
-
-### 0.4.0
-* (bluefox) fix errors with grunt
-
-### 0.2.0
-* (bluefox) initial release
 
 ## License
 The MIT License (MIT)

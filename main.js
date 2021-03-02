@@ -36,22 +36,20 @@
 var http		= require('http');
 var request		= require('request');
 var cron        = require('cron');
-let fs = require("fs");
+var fs = require("fs");
 
 
 //you have to require the utils module and call adapter function
 const utils =    require(__dirname + '/lib/utils'); // Get common adapter utils
+const schedules = require("./schedules");
 
 //you have to call the adapter function and pass a options object
 //name has to be set and has to be equal to adapters folder name and main file name excluding extension
 //adapter will be restarted automatically every time as the configuration changed, e.g system.adapter.becker.0
 var adapter = new utils.Adapter('becker');
 var devicemap = {};
-var schedules = [];
 var data_dir;
 var schedules_file;
-
-var max_durations = {};
 
 var deviceId = 1;
 var id_count = 0;
@@ -96,7 +94,7 @@ adapter.on('stateChange', function (id, state) {
         var idx = tmp.pop(); // name of the device
         var deviceId = idx.replace(/device_/,'')*1;
         var val = state.val;
-        adapter.log.info(`stateChange action: ${deviceId}: ${dp}: ${val}:`);
+        adapter.log.info(`stateChange action: ${deviceId}:${dp}:${val}:` + (dp == "command"));
         if ( dp == 'temp' ) { // set temperature, implies setting mode -> individual
             postResponse('deviced.hvac_zone_set_temperature',deviceId,{ hvac_id: deviceId, mode: 'individual', temp: val });
         }
@@ -119,27 +117,43 @@ adapter.on('stateChange', function (id, state) {
         		postResponse('deviced.hvac_zone_set_schedule',deviceId,{ hvac_id: deviceId, enabled: getBoolean(val) } );
         	});
         }
-        else if ( ['up','down','stop','preset1','preset2'].indexOf(dp)>-1 ) { // execute command
-            move_shutter(deviceId,dp);
-            setState('device_'+deviceId+'.command',dp,1);
-        }
+//        else if ( ['up','down','stop','preset1','preset2'].indexOf(dp)>-1 ) { // execute command
+//            move_shutter(deviceId,dp);
+//            setState('device_'+deviceId+'.command',dp,1);
+//        }
         else if ( dp.indexOf('pos_') == 0 ) {
             let x = dp.replace(/^pos_/,'');
             if ( x in config_states.positions[idx] ) {
                 config_states.positions[idx][x] = val;
             }
         }
+        else if ( dp == 'position') {
+            adapter.log.debug("setState: " + `${idx}.${dp}:${val}`);
+            if ( state.val > 100) { val = 100; }
+            else if ( state.val <0 ) { val = 0; }
+            move_to_pos(deviceId,val);
+            setState(`${idx}.prev_position`,val,true);
+            setState(`${idx}.position`,val,true);
+        }
         else if ( dp == 'command' ) { // execute command
-            if ( val in commands ) {
+            adapter.log.debug("setState: " + `${idx}.${dp}:${val}`);
+            setState(`${idx}.${dp}`,val, true, 1);
+            var pos;
+            if ( val>=0 && val <=100 ) {
+                move_to_pos(deviceId,val);
+                setState(`${idx}.prev_position`,val,true);
+                setState(`${idx}.position`,val,true);
+                }
+            else if (val in config_states.positions[idx]) {
+                debug("move_shutter: " + val);
+                pos = config_states.positions[idx][val];
                 move_shutter(deviceId,val);
-                adapter.log.debug("setState: " + `${idx}.${dp}:${val}`);
-                setState(`${idx}.${dp}`,val, true, 1);
-                var pos;
-                if ( val == "up") { pos = 0; }
-                else if ( val == "down" ) { pos = 100; }
-                else if ( val == "preset1" ) { pos = 90; }
-                else if ( val == "preset2" ) { pos = 70; }
-                setState(`${idx}.position`,pos,1);
+                setState(`${idx}.position`,val,1);
+                setState(`${idx}.prev_position`,val,1);
+            }
+            else {
+                adapter.log.warn("stateChange: undefined argument " + val);
+                return;
             }
         }
         else if ( dp == 'getstate' ) { // execute command
@@ -154,8 +168,6 @@ adapter.on('stateChange', function (id, state) {
             }
         }
         else if ( dp == 'position' ) { // position change
-            if ( state.val > 100) setState(`${idx}.position`,100, true);
-            else if ( state.val <0 ) setState(`${idx}.position`,0, true);
         }
         else {
             adapter.log.error(`stateChange for '${dp}' not yet implemented.`);
@@ -164,7 +176,7 @@ adapter.on('stateChange', function (id, state) {
 });
 
 function move_shutter(deviceId,cmd) {
-    //adapter.log.info(`SIMULATE: move shutter ${deviceId} to pos ${cmd}`);
+    adapter.log.info(`move shutter ${deviceId} to pos ${cmd}`);
     //return;
     postResponse('deviced.group_send_command', deviceId, {
         group_id: deviceId,
@@ -179,6 +191,20 @@ function move_seconds(deviceId,cmd,seconds) {
     setTimeout(move_shutter,seconds*1000,deviceId,'stop');
 }
 
+function move_to_pos(deviceId,val) {
+    var idx = `device_${deviceId}`;
+    adapter.log.debug(`move_to_pos: ${idx}.position`);
+    adapter.getState(`${idx}.prev_position`,(err,state) => {
+        adapter.log.debug("move_to_pos: command: seconds: "+val+", "+ state.val);
+        if ( val == state.val ) {
+            adapter.log.warn("move_to_pos: command: seconds: "+val+" == "+ state.val);
+            return;
+        }
+        var direction = ( val < state.val ) ? "up" : "down";
+        var seconds = Math.abs(state.val - val) * config_states['positions'][idx]['seconds'] / 100.0;
+        move_seconds(deviceId,direction,seconds);
+    });
+}
 // Some message was sent to adapter instance over message box. Used by email, pushover, text2speech, ...
 adapter.on('message', function (obj) {
     if (typeof obj === 'object' && obj.message) {
@@ -236,7 +262,7 @@ function createChannel(device,properties,callback) {
 }
 
 function setState(dev,value,confirm) {
-    //adapter.log.debug(`setState: ${dev} -> ${value} (${confirm})`);
+    adapter.log.debug(`setState: ${dev} -> ${value} (${confirm})`);
     adapter.setState(dev,value,confirm, function (err) {
         // analyse if the state could be set (because of permissions)
         if (err) adapter.log.error(err);
@@ -246,7 +272,10 @@ function setState(dev,value,confirm) {
 function createObjectState(state,id,value,properties = null) {
     var dev = state;
     if ( id  ) {
-        dev = 'device_' + id + '.' + state;
+        if ( ! isNaN(id) ) {
+            id = 'device_' + id;
+        }
+        dev = id + '.' + state;
     }
     adapter.log.debug("createObjectState: " + dev + " => " + value + ", " + JSON.stringify(properties == null ? {} : properties));
     if ( properties == null ) {
@@ -336,7 +365,7 @@ function strftime(sFormat, date) {
 var map_cmd = { 'move(1)': 'down', 'move(-1)': 'up', 'move(0)': 'stop', 'movepreset(1)': 'preset1', 'movepreset(2)': 'preset2' };
 var map_cc = { 'down': ['move', 1], 'up': ['move', -1], 'stop': ['move',0], 'preset1': ['movepreset',1], 'preset2': ['movepreset',2] };
 var shutter_duration;
-var config_states = { positions: {} };
+var config_states = { positions: {},timers: {} };
 var default_positions = { 'up': 0, 'down': 100, 'preset1': 90, 'preset2': 75 };
 
 var config_file = __dirname + '/becker-config.json';
@@ -387,6 +416,7 @@ function evaluateLog(error, command, deviceId, result) {
         adapter.log.error('Error for "' + command + "': " + error);
         return;
     }
+    debug("START: evaluateLog");
     if( 'result' in result && 'log' in result['result']) {
         var logs = result['result']['log'];
         //adapter.log.debug("log file: "+logs)
@@ -414,7 +444,7 @@ function evaluateLog(error, command, deviceId, result) {
                     if ( r != null ) {
                         r.shift();
                         result = match_strings[x][1](r);
-                        var element = [ date, result[2] ];
+                        var element = [ date, result[2] ? result[2].replace("pos","preset") : null ];
                         for ( var j=0; j< result[1].length; j++ ) {
                             var entry = 'device_'+result[1][j];
                             if ( result[0].indexOf("move") > -1 ) {
@@ -432,6 +462,7 @@ function evaluateLog(error, command, deviceId, result) {
             }
             for ( var dev in tl ) {
                 var lastpos = null;
+                debug("TEST: " + dev + ": " + tl[dev][0][1] + ", " + JSON.stringify(config_states.positions[dev]));
                 if ( tl[dev][0][1] != "stop" ) {
                     lastpos = config_states.positions[dev][tl[dev][0][1]];
                 }
@@ -445,12 +476,14 @@ function evaluateLog(error, command, deviceId, result) {
                     var direction = 0;
                     for ( var j = last; j>0; j-- ) {
                         direction = map_cc[tl[dev][j][1]][1] * (tl[dev][j-1][0] - tl[dev][j][0]);
-                        lastpos += direction / max_durations[dev] * 100.0;
+                        lastpos += direction / config_states.positions[dev].seconds * 100.0;
+                        debug("TEST2: "+ dev + ", "+config_states.positions[dev].seconds);
                     }
 
                 }
                 adapter.log.debug(`evaluateLog: update State: ${dev}.position: ${parseInt(lastpos)}`);
                 setState(`${dev}.position`,parseInt(lastpos), true);
+                setState(`${dev}.prev_position`,parseInt(lastpos), true);
                 setState(`${dev}.command`,tl[dev][0][1], true);
             }
             var acttime = strftime('%F_%H:%M:%S',new Date());
@@ -498,6 +531,7 @@ function evaluateConfig(error, command, deviceId, result) {
         adapter.log.error('Error for "' + command + "': " + error);
         return;
     }
+    debug("START: evaluateConfig")
     adapter.log.debug('evaluateConfig: ' + command + '('+deviceId+'): ' + JSON.stringify(result));
     if ( command == 'deviced.item_get_config' ) {
         if ( 'temp-comfort' in result.result.config ) {
@@ -507,7 +541,7 @@ function evaluateConfig(error, command, deviceId, result) {
     else if ( command == 'deviced.hvac_zone_get_mode' ) {
         if ( 'result' in result && 'mode' in result['result'] ) {
             var mode = result['result']['mode'];
-            createObjectState('mode',deviceId,mode,{type: "text", name: "Temperature mode", role: "mode"});
+            createObjectState('mode',deviceId,mode,{type: "string", name: "Temperature mode", role: "mode"});
             postResponse('deviced.hvac_zone_get_temperature', deviceId, {
                 hvac_id: parseInt(deviceId),
                 mode: mode
@@ -519,7 +553,7 @@ function evaluateConfig(error, command, deviceId, result) {
             createObjectState('temp',deviceId,result['result']['temp'],{type: "number", name: "temperature", role: "value.temperature"});
         }
         else {
-            createObjectState('temp',deviceId,-1,{type: "text", name: "Temperature mode", role: "value.temperature"});
+            createObjectState('temp',deviceId,-1,{type: "string", name: "Temperature mode", role: "value.temperature"});
         }
     }
 }
@@ -561,13 +595,14 @@ function evaluateItemsList(error, command, deviceId, result) {
         adapter.log.error('Error for "' + command + "': " + error);
         return;
     }
-    adapter.log.debug('evaluating items list for command "' + command + '": ' + JSON.stringify(result));
+    debug("START: evaluateItemsList");
+    debug('evaluating items list for command "' + command + '": ' + JSON.stringify(result));
 
     var index = {};
     if ('result' in result) {
         if ('item_list' in result['result']) {
             //fs.writeFileSync(__dirname+'/itemList.json',JSON.stringify(result['result'],null,2));
-            createObjectState('lastlogtime',null,"0000-00-00_00:00:00",{type: "text", name: "time string", role: "time"});
+            createObjectState('lastlogtime',null,"0000-00-00_00:00:00",{type: "string", name: "time string", role: "time"});
 
             for (var item of result['result']['item_list']) {
                 if ( 'items' in item ) {
@@ -599,18 +634,21 @@ function evaluateItemsList(error, command, deviceId, result) {
                             name = name.replace(x[0], '');
                         }
                         devicemap[name] = id;
-                        max_durations[mydev] = shutter_duration[x[1]];
-                        createObjectState("max_duration", id, shutter_duration[x[1]],{type: "number", name: "time for shutting", role: "seconds"});
-                        createObjectState("position", id, 0,{type: "percentage", name: "shutting state", role: "position"});
-                        createObjectState('command', id, '',{type: "text", name: "last shutter command", role: "move"});
                         if ( ! (mydev in config_states.positions) ) {
                             config_states.positions[mydev] = {};
                         }
+                        if ( ! config_states.positions[mydev]['seconds'] ) {
+                            config_states.positions[mydev].seconds = shutter_duration[x[1]];
+                        }
+                        createObjectState("max_duration", id, config_states.positions[mydev].seconds,{type: "number", name: "time for shutting", role: "seconds"});
+                        createObjectState("position", id, 0,{type: "number", name: "shutting state", role: "position"});
+                        createObjectState("prev_position", id, 0,{type: "number", name: "previous shutting state", role: "position"});
+                        createObjectState('command', id, '',{type: "string", name: "last shutter command", role: "move"});
                         for ( var pos in default_positions ) {
                             if ( ! (pos in config_states.positions[mydev]) ) {
                                 config_states.positions[mydev][pos] = default_positions[pos];
                             }
-                            createObjectState(`pos_${pos}`, id,config_states.positions[mydev][pos],{type: "percentage", name: "default shutting state", role: "position"});
+                            createObjectState(`pos_${pos}`, id,config_states.positions[mydev][pos],{type: "number", name: "default shutting state", role: "position"});
                         }
                     }
                     else if (item['dev'] == 'thermostat') {
@@ -619,19 +657,43 @@ function evaluateItemsList(error, command, deviceId, result) {
                     }
                 }
             }
-            debug("Searching for obsolete channels...");
+            debug("Purging obsolete channels...");
             adapter.getChannels((err,chan) => {
-                if (err) { adapter.log.warning(err); }
+                if (err) { adapter.log.warn(err); }
                 for (var x in chan ) {
                     var dev = chan[x]["_id"].replace(/^.*\./,"");
                     if ( devlist.indexOf(dev) == -1 ) {
                         debug("Deleting channel "+dev);
                         adapter.deleteChannel(dev,null,(err) => {
-                            if (err) { adapter.log.warning("problems when deleting channel "+dev)}
+                            if (err) { adapter.log.warn("problems when deleting channel "+dev)}
                         });
+                        continue;
                     }
+                    adapter.getStatesOf(chan[x]["_id"],null,(err,states) => {
+                        if (err) { adapter.log.warn(err); }
+                        for (var y in states) {
+                            let res = states[y]["_id"].match(/^(.*)\.(device_\d+)\.timer_(\d+)\.(.*)/);
+                            if ( res && ! config_states['timers'][res[2]][res[3]] ) {
+                                adapter.deleteState(`${res[1]}.${res[2]}`,`timer_${res[3]}`,res[4], (err) => {
+                                    if (err) { adapter.log.warn("problems when deleting state "+states[y]["_id"])}
+                                });
+                            }
+                        }
+                    });
                 }
             });
+            for (var x in config_states) {
+                for (var dev in config_states[x]) {
+                    if (devlist.indexOf(dev) == -1) {
+                        delete config_states[x][dev];
+                    }
+                }
+            }
+            for (var dev in config_states['timers']) {
+                for (var timer in config_states['timers'][dev] ) {
+                    create_timer_objects(dev,timer,config_states['timers'][dev][timer]);
+                }
+            }
         }
     }
 }
@@ -746,74 +808,83 @@ function postResponse(command, deviceId, args, callback){
     req.end();
 }
 
-function get_all_items_once() {
+function init_states() {
+    debug("START: create_states");
+    if ( fs.existsSync(config_file) ) {
+        var raw = fs.readFileSync(config_file);
+        config_states = JSON.parse(raw);
+        adapter.log.debug("read from file: " + JSON.stringify(config_states));
+    }
     postResponse('deviced.deviced_get_item_list',null,{},evaluateItemsList);
+    adapter.log.info("Create timer states");
 }
 
-var numTimers = 0;
+function update_device_status() {
+    postResponse("deviced.deviced_log_get", null, {}, evaluateLog);
+    adapter.getChannels( updateDevices  );
+}
 
-function create_timer(deviceId,schedule,command) {
-    var timer_count = 0;
-    numTimers += 1;
-    var new_timer = `device_${deviceId}.timer_${numTimers}`;
-    adapter.log.debug("create_timer:" + new_timer);
-    createChannel(new_timer,{
-        name: new_timer,
-        type: 'channel',
-        common: {role: 'timer'},
-        native: {
-            "id": numTimers
-        }
-    },function(err) {
-        if (err) adapter.log.error(err);
-        adapter.log.debug("called: callback");
-        createObjectState(`timer_${numTimers}.schedule`,deviceId,schedule,{role: "schedule",type:"text"});
-        createObjectState(`timer_${numTimers}.command`,deviceId,command,{role: "move",type:"text"});
-    });
+function create_timer_objects(deviceId,num,entry) {
+    debug("START: create_timer_objects()");
+    var dev_name;
+    if (isNaN(deviceId)) {
+        dev_name = deviceId;
+    }
+    else {
+        dev_name = `device_${deviceId}`;
+    }
+    debug(`create_timer_objects: ${dev_name}, ${num}, ${JSON.stringify(entry)}`);
+/*    var timer = {schedule: schedule, command: command, group: group};
+    if ( ! ('timers' in config_states) ) {
+        config_states['timers'] = {}
+    }
+    if ( dev_name in config_states['timers'] ) {
+        config_states['timers'][dev_name].push(timer);
+
+    }
+    else {
+        config_states['timers'][dev_name] = [ timer ];
+    }*/
+    var new_timer = `${dev_name}.timer_${num}`;
+    var new_timer_schedule = `${new_timer}.schedule`;
+    adapter.log.debug(`create_timer_objects: ${new_timer}`);
+    var sched = entry['schedule'];
+    if ( typeof sched === "string") {
+        // convert from cron format
+        sched = schedules.decode_cron(sched);
+        debug("converted: "+JSON.stringify(sched));
+    }
+    createObjectState("command",new_timer,entry['command'],{role: "move",type:"string"});
+    createObjectState("group",new_timer,entry['group'],{role: "group",type:"string"});
+    createObjectState("schedule",new_timer,entry['schedule'],{role: "schedule",type:"string"});
+    createObjectState("time",new_timer_schedule,sched.time,{role: "time",type:"string"});
+    createObjectState("days",new_timer_schedule,sched.aod,{role: "list",type:"string"});
+    createObjectState("day_of_month",new_timer_schedule,sched.dom,{role: "time",type:"string"});
+    createObjectState("month",new_timer_schedule,sched.month,{role: "month",type:"string"});
 }
 
 function main() {
 
     // The adapters config (in the instance object everything under the attribute "native") is accessible via
     // adapter.config:
+    debug("START: main()");
     adapter.log.info('loglevel: '+adapter.common.loglevel);
     adapter.log.info("CONFIG: " + JSON.stringify(adapter.config));
-    shutter_duration = { h: adapter.config.seconds_h, l: adapter.config.seconds_l }; // seconds for complete closure of shutters
-    //positions = { 'up': 0, 'down': 100, 'preset1': adapter.config.pos_preset1, 'preset2': adapter.config.pos_preset2 };
+    shutter_duration = { h: parseInt(adapter.config.seconds_h), l: parseInt(adapter.config.seconds_l) }; // seconds for complete closure of shutters
     adapter.log.debug('positions: '+JSON.stringify(default_positions));
 
     if (adapter.config.ipaddress === '' || adapter.config.ipaddress === '0.0.0.0') {
         adapter.log.error('Please specify IP address');
         return;
     }
-    if ( fs.existsSync(config_file) ) {
-        var raw = fs.readFileSync(config_file);
-        config_states = JSON.parse(raw);
-        adapter.log.debug("read from file: " + JSON.stringify(config_states));
-    }
-    get_all_items_once();
-    create_timer(1,"0 */1 * * * *","up");
-    // create timer channel
-/*    adapter.getState('readConfig',function (err,stat) {
-        if ( err === null && stat === null ) {
-            createObjectState('readConfig',null,false);
-            get_all_items_once();
-            setState('readConfig',false);
-        }
-        if ( stat && stat.val ) {
-            get_all_items_once();
-            setState('readConfig',false);
-        }
-    });*/
+    init_states();
     adapter.log.debug("all items read in");
-    postResponse("deviced.deviced_log_get", null, {}, evaluateLog);
     adapter.subscribeStates('*');
-    var cronJob = cron.job("0 */1 * * * *", function(){
+    var cronJob = cron.job("*/1 * * * *", function(){
         adapter.log.info("CRON: fetch becker event log...");
-        postResponse("deviced.deviced_log_get", null, {}, evaluateLog);
-        adapter.getChannels( updateDevices  );
+        update_device_status();
         dump_config_parameters();
-        //adapter.log.info("CRON: finished...");
+        adapter.log.info("CRON: finished...");
     });
     cronJob.start();
 }
